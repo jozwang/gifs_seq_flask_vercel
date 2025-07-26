@@ -12,7 +12,7 @@ import pytz
 VEHICLE_POSITIONS_URL = "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions/Bus"
 TRIP_UPDATES_URL = "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates/Bus"
 BRISBANE_TZ = pytz.timezone('Australia/Brisbane')
-REFRESH_INTERVAL_SECONDS = 60
+REFRESH_INTERVAL_SECONDS = 30
 
 # --- Flask App Setup ---
 # Note: The template folder needs to be specified relative to the root for Vercel
