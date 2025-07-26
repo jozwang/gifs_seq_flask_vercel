@@ -12,10 +12,10 @@ import pytz
 VEHICLE_POSITIONS_URL = "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions/Bus"
 TRIP_UPDATES_URL = "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates/Bus"
 BRISBANE_TZ = pytz.timezone('Australia/Brisbane')
-REFRESH_INTERVAL_SECONDS = 30
+REFRESH_INTERVAL_SECONDS = 60
 
 # --- Flask App Setup ---
-# Note: The template folder needs to be specified relative to the root for Vercel
+# The template folder needs to be specified relative to the root for Vercel
 app = Flask(__name__, template_folder='../templates')
 
 # --- Data Fetching & Processing Logic ---
@@ -85,30 +85,41 @@ def get_live_bus_data() -> tuple[pd.DataFrame, datetime]:
 # --- Flask Route ---
 @app.route('/')
 def index():
-    filtered_df, last_refreshed_time = get_live_bus_data()
+    master_df, last_refreshed_time = get_live_bus_data()
 
-    if filtered_df.empty:
+    if master_df.empty:
         return "<h1>Could not retrieve live bus data.</h1><p>The external API may be down. Please try again later.</p>", 503
 
-    # Filters are now stateless and applied on each request
+    # Get user's current selections from URL
     selected_region = request.args.get('region', 'Gold Coast')
     selected_route = request.args.get('route', '700')
     selected_status = request.args.getlist('status')
     selected_vehicle = request.args.get('vehicle', 'All')
 
-    # Create options for the filters based on the full dataset
-    region_options = ["All"] + sorted(filtered_df["region"].unique().tolist())
-    route_options = ["All"] + sorted(filtered_df["route_name"].unique().tolist())
-    status_options = sorted(filtered_df["status"].unique().tolist())
-    vehicle_options = ["All"] + sorted(filtered_df["vehicle_id"].unique().tolist())
+    # --- CASCADING LOGIC TO GENERATE FILTER OPTIONS ---
+    
+    # Region options are based on the whole dataset
+    region_options = ["All"] + sorted(master_df["region"].unique().tolist())
 
-    # Apply filters to the dataframe
-    if selected_region != "All":
-        filtered_df = filtered_df[filtered_df["region"] == selected_region]
-    if selected_route != "All":
-        filtered_df = filtered_df[filtered_df["route_name"] == selected_route]
-    if selected_status:
-        filtered_df = filtered_df[filtered_df["status"].isin(selected_status)]
+    # Filter data by selected region to get route options
+    df_for_routes = master_df[master_df["region"] == selected_region] if selected_region != "All" else master_df
+    route_options = ["All"] + sorted(df_for_routes["route_name"].unique().tolist())
+
+    # Filter data further by selected route to get status options
+    df_for_status = df_for_routes[df_for_routes["route_name"] == selected_route] if selected_route != "All" else df_for_routes
+    status_options = sorted(df_for_status["status"].unique().tolist())
+
+    # If status is not provided in the URL, default to all available statuses for the current selection
+    if not selected_status:
+        selected_status = status_options
+
+    # Filter data further by status to get vehicle options
+    df_for_vehicles = df_for_status[df_for_status["status"].isin(selected_status)]
+    vehicle_options = ["All"] + sorted(df_for_vehicles["vehicle_id"].unique().tolist())
+
+    # --- APPLY FINAL FILTERS FOR THE MAP ---
+    # The final filtered data is the one we used for the last dropdown
+    filtered_df = df_for_vehicles
     if selected_vehicle != "All":
         filtered_df = filtered_df[filtered_df["vehicle_id"] == selected_vehicle]
 
